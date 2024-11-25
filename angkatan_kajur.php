@@ -1,30 +1,79 @@
 <?php
 session_start();
 include 'db.php';
+$currentPage = basename($_SERVER['PHP_SELF']);
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: index.php');
-    exit();
+// Pastikan pengguna telah login dan memiliki session 'user_id'
+if (isset($_SESSION['user_id'])) {
+    $user_id = $_SESSION['user_id'];
+
+    // Query untuk mengambil jurusan_id ketua jurusan yang sedang login
+    $query_jurusan = "SELECT jurusan.id AS jurusan_id
+                      FROM users AS users
+                      JOIN dosen AS dosen ON users.dosen_id = dosen.id
+                      JOIN jurusan AS jurusan ON jurusan.ketua_jurusan_id = dosen.id
+                      WHERE users.id = '$user_id'";
+
+    $result_jurusan = mysqli_query($conn, $query_jurusan);
+
+    if ($result_jurusan && mysqli_num_rows($result_jurusan) > 0) {
+        $row_jurusan = mysqli_fetch_assoc($result_jurusan);
+        $jurusan_id = $row_jurusan['jurusan_id'];
+
+        // Query untuk mengambil data pengajuan yang ditolak berdasarkan jurusan
+        $query_pengajuan = "SELECT * FROM pengajuan WHERE status = 'ditolak' AND jurusan_id = '$jurusan_id'";
+        $result_pengajuan = mysqli_query($conn, $query_pengajuan);
+
+    } else {
+        echo "Jurusan tidak ditemukan.";
+        exit;
+    }
+
+} else {
+    header("Location: index.php"); // Redirect ke halaman login jika belum login
+    exit;
 }
+if (isset($_SESSION['user_id'])) {
+    $userId = $_SESSION['user_id'];
 
-$query = "SELECT DISTINCT angkatan FROM pengajuan";
-$result = $conn->query($query);
+    // Query untuk mengambil nama dari tabel dosen
+    $queryKajur = "SELECT dosen.nama_dosen AS namaKajur FROM dosen
+                   JOIN users ON dosen.id = users.dosen_id
+                   WHERE users.id = ?";
+    $stmt = $conn->prepare($queryKajur);
+    if ($stmt) {
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        $resultKajur = $stmt->get_result();
+
+        if ($resultKajur->num_rows > 0) {
+            $row = $resultKajur->fetch_assoc();
+            $namaKajur = $row['namaKajur'];
+        } else {
+            $namaKajur = "Unknown"; // Nama default jika tidak ditemukan
+        }
+
+        $stmt->close();
+    } else {
+        echo "Error in query preparation.";
+    }
+}
 ?>
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SUDISMA - Angkatan</title>
+    <title>Pengajuan Kajur</title>
     <!-- Bootstrap CSS -->
     <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.11.3/css/jquery.dataTables.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
     <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-         body {
+        body {
             background-color: #f8f9fa;
         }
         .sidebar {
@@ -35,14 +84,15 @@ $result = $conn->query($query);
             padding-top: 20px;
             position: fixed;
             top: 0;
-            left: 0;
-            width: 250px;
-            transition: transform 0.3s ease;
+            left: -250px; /* Sidebar tersembunyi di kiri */
+            width: 250px; /* Lebar sidebar */
+            transition: left 0.3s ease; /* Animasi ketika sidebar muncul dari kiri */
+            z-index: 1000;
         }
         .navbar {
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        .sidebar h5 {
+        .sidebar h4 {
             text-align: center;
             color: white;
             margin-bottom: 20px;
@@ -57,27 +107,20 @@ $result = $conn->query($query);
         .sidebar a:hover {
             background-color: #495057;
         }
-        .dashboard-header {
-            width: calc(100% - 250px); /* Set to adjust with sidebar width */
-            padding: 120px;
-            border-radius: 0;
-            background-color: #4472c4;
-            color: white;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            position: relative;
-            z-index: 1;
-            margin-left: 250px; /* Offset by sidebar width */
-            justify-content: space-between;
-            display: flex;
-        }
+        .sidebar.visible {
+        left: 0; /* Sidebar muncul dari kiri */
+    }
+        
         .main-content {
-            margin-left: 250px;
-            padding: 20px;
-            margin-top: 150px; /* Adjust for dashboard header */
-            min-height: calc(100vh - 56px); 
+            
+            margin-left: 250px; /* Beri ruang agar konten tidak tertutup sidebar */
+        padding: 20px;
+        transition: margin-left 0.3s ease;
+        z-index: 1;
+        padding-top: 60px; 
         }
         .status-badge {
-            padding: 3px 8px; /* Mengurangi padding badge status */
+            padding: 3px 8px;
             font-size: 0.8em;
         }
         .status-belum-diproses {
@@ -97,7 +140,7 @@ $result = $conn->query($query);
             gap: 5px;
         }
         .btn-custom {
-            padding: 3px 5px; /* Mengecilkan ukuran tombol aksi */
+            padding: 3px 5px;
             font-size: 0.85em;
             border-radius: 3px;
         }
@@ -106,132 +149,254 @@ $result = $conn->query($query);
             background-color: #fff;
             border-radius: 10px;
             box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            margin-top: 0; /* Pastikan tidak ada margin di atas tabel */
         }
         .table thead th {
             background-color: #a3c1e0;
-            color: black !important;;
-            font-size: 0.9em; /* Menyesuaikan ukuran font header tabel */
+            color: black;
+            font-size: 0.9em;
         }
         .table th, .table td {
-            font-size: 0.85em; /* Mengecilkan ukuran font */
-            padding: 8px; /* Mengurangi padding untuk membuat tabel lebih ringkas */
+            font-size: 0.85em;
+            padding: 8px;
             text-align: center;
         }
         .table tbody tr:nth-child(odd) {
             background-color: #f9f9f9;
         }
-        .main-content {
-            margin-left: 20px;
-            padding: 20px;
-            margin-top: 20px; /* Adjust for dashboard header */
-            min-height: calc(100vh - 56px); 
+        /* Responsiveness */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                left: -100%; /* Sidebar tersembunyi di luar layar */
+                top: 0;
+            }
+            .sidebar.visible {
+            left: 0; /* Sidebar muncul dari atas pada layar kecil */
+            }
+            .main-content {
+                margin-left: 0;
+                padding-top: 60px; /* Beri ruang di atas untuk navbar */
+            }
+            .sidebar a {
+                font-size: 14px;
+                padding: 8px 16px;
+            }
+            .table th, .table td {
+                font-size: 0.75em;
+                padding: 6px;
+            }
+            .table-container {
+                padding: 10px;
+                margin-top: 0;
+            }
         }
-        .sidebar.collapsed {
-            transform: translateX(-100%);
+        @media (max-width: 576px) {
+            .sidebar {
+                position: fixed;
+            width: 100%;
+            height: 100%;
+            left: -100%;
+            top: 0;
+            }
+            .main-content {
+                padding-top: 60px; /* Pastikan ada ruang untuk navbar */
+                margin-left: 0; 
+            }
+            .table th, .table td {
+                font-size: 0.7em;
+                padding: 5px;
+            }
+            .table-container {
+                margin-top: 0;
+                padding: 10px; /* Sesuaikan padding untuk layar kecil */
+            }
         }
-        .content-wrapper {
-            margin-left: 250px;
-            padding-top: 60px;
-            transition: margin-left 0.3s ease;
-        }
-        .content-wrapper.expanded {
-            margin-left: 0;
-        }
-
         .header-title {
-            font-size: 1.5em;
-            color: #007bff;
-            font-weight: bold;
-            text-align: left;
-            margin-bottom: 15px;
-        }
+    font-size: 1.5em;  /* Menambah ukuran font judul */
+    font-weight: bold;  /* Membuat teks lebih tebal */
+    margin-bottom: 20px;  /* Memberi ruang di bawah judul */
+    text-align: left;  /* Menjaga teks tetap di tengah */
+    color: #333;  /* Warna teks yang sedikit gelap untuk kontras */
+}
+
     </style>
 </head>
 <body>
     <!-- Navbar -->
-<nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-    <div class="container-fluid">
-        <button class="btn me-3" id="sidebarToggle" style="background-color: transparent; border: none;">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
+        <div class="container-fluid">
+            <button class="btn me-3" id="sidebarToggle" style="background-color: transparent; border: none;">
+                <span class="navbar-toggler-icon"></span>
+            </button>
 
-        <a class="navbar-brand text-black" href="#">SUDISMA</a>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ml-auto">
-                <!-- Tambahkan menu lain di sini jika diperlukan -->
-            </ul>
+            <a class="navbar-brand text-black" href="#">SUDISMA</a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ml-auto">
+                    <!-- Tambahkan menu lain di sini jika diperlukan -->
+                </ul>
+            </div>
         </div>
-    </div>
-</nav>
+    </nav>
 
     <!-- Sidebar -->
-    <div class="sidebar bg-light p-3" id="sidebar">
+    <div class="sidebar bg-light p-3 d-flex flex-column" id="sidebar" style="height: 100vh;">
         <h4 class="text-center">SUDISMA</h4>
-        <div style="height: 40px;"></div>
-        <small class="text-muted ms-2">Menu</small>
+        
+        <small class="text-muted ms-2" style="margin-top: 70px;">Menu</small>
         <nav class="nav flex-column mt-2">
-            <a class="nav-link active d-flex align-items-center text-dark" href="dashboard_admin.php">Dashboard</a>
-            <a class="nav-link d-flex align-items-center text-dark" href="list_pengajuan.php">Dispensasi</a>
-            <a class="nav-link d-flex align-items-center text-dark" href="list_angkatan.php">Angkatan</a>
-            <a class="nav-link d-flex align-items-center text-dark" href="list_dosen.php">Dosen Penyetuju</a>
-            <a class="nav-link d-flex align-items-center text-dark" href="list_tanggal.php">Tanggal Pengajuan</a>
-            <a class="nav-link d-flex align-items-center text-dark" href="logout.php">Logout</a>
+            <a class="nav-link d-flex align-items-center <?= $currentPage == 'dashboard_kajur.php' ? 'active' : '' ?>" href="dashboard_kajur.php" style="color: <?= $currentPage == 'dashboard_kajur.php' ? '#007bff' : 'black'; ?>;">
+                <i class="bi bi-activity" style="margin-right: 15px;"></i> Dashboard
+            </a>
+            <a class="nav-link d-flex align-items-center <?= $currentPage == 'pengajuan_kajur.php' ? 'active' : '' ?>" href="pengajuan_kajur.php" style="color: <?= $currentPage == 'pengajuan_kajur.php' ? '#007bff' : 'black'; ?>;">
+                <i class="bi bi-file-earmark-plus" style="margin-right: 15px;"></i> Dispensasi
+            </a>
+            <a class="nav-link d-flex align-items-center <?= $currentPage == 'angkatan_kajur.php' ? 'active' : '' ?>" href="angkatan_kajur.php" style="color: <?= $currentPage == 'angkatan_kajur.php' ? '#007bff' : 'black'; ?>;">
+                <i class="bi bi-x-circle" style="margin-right: 15px;"></i> Data Ditolak
+            </a>
+            <a class="nav-link d-flex align-items-center <?= $currentPage == 'riwayat_kajur.php' ? 'active' : '' ?>" href="riwayat_kajur.php" style="color: <?= $currentPage == 'riwayat_kajur.php' ? '#007bff' : 'black'; ?>;">
+                <i class="bi bi-archive" style="margin-right: 15px;"></i> Riwayat Pengajuan
+            </a>
+            <a class="nav-link d-flex align-items-center <?= $currentPage == 'pengaturan_kajur.php' ? 'active' : '' ?>" href="pengaturan_kajur.php" style="color: <?= $currentPage == 'pengaturan_kajur.php' ? '#007bff' : 'black'; ?>;">
+                <i class="bi bi-gear" style="margin-right: 15px;"></i> Pengaturan Akun
+            </a>
+            <a class="nav-link d-flex align-items-center <?= $currentPage == 'logout.php' ? 'active' : '' ?>" href="logout.php" style="color: <?= $currentPage == 'logout.php' ? '#007bff' : 'black'; ?>;">
+                <i class="bi bi-box-arrow-right" style="margin-right: 15px;"></i> Logout
+            </a>
         </nav>
+
+        <!-- Menampilkan nama Kajur di bagian paling bawah sidebar -->
+        <div class="mt-auto text-left p-3" style="background-color: #ffffff; color: black;">
+            <small>Logged in as: <br><strong><?php echo $namaKajur; ?></strong></small>
+        </div>
     </div>
 
+    <!-- Main Content -->
     <div class="main-content" id="content">
         <div class="container mt-5">
             <div class="table-container">
-                <div class="header-title">List Data Angkatan</div>
+                <div class="header-title">List Data Pengajuan Ditolak</div>
                 <div class="table-responsive">
-                <table id="angkatanTable" class="table table-bordered table-hover">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Angkatan</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                    <table id="dispensasiTable" class="table table-bordered table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nama Lengkap</th>
+                                <th>NIM</th>
+                                <th>Angkatan</th>
+                                <th>Tanggal Pengajuan</th>
+                                <th>Alasan</th>
+                                <th>Email</th>
+                                <th>Lampiran</th>
+                                <th>Status</th>
+                                <th>Ubah Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                         <?php $no = 1; ?>
-                        <?php while ($row = $result->fetch_assoc()): ?>
+                        <?php while ($row = mysqli_fetch_assoc($result_pengajuan)): ?>
                         <tr>
                             <td class="text-center"><?= $no++; ?></td>
+                            <td><?= htmlspecialchars($row['nama_lengkap']); ?></td>
+                            <td><?= htmlspecialchars($row['nim']); ?></td>
                             <td><?= htmlspecialchars($row['angkatan']); ?></td>
+                            <td><?= htmlspecialchars($row['tanggal_pengajuan']); ?></td>
+                            <td><?= htmlspecialchars($row['alasan']); ?></td>
+                            <td><?= htmlspecialchars($row['email']); ?></td>
+                            <td>
+                                <?php if (!empty($row['dokumen_lampiran'])): ?>
+                                    <a href="uploads/<?= $row['dokumen_lampiran']; ?>" target="_blank">Lihat Dokumen</a>
+                                <?php else: ?>
+                                    Tidak ada
+                                <?php endif; ?>
+                            </td>
+                            <td><span class="badge badge-danger">Ditolak</span></td>
+                            <td>
+                                <button class="btn btn-warning btn-sm ubah-status" data-id="<?= $row['id']; ?>">
+                                    Ubah Status
+                                </button>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
-                </table>
+                    </table>
                 </div>
             </div>
         </div>
+    </div>
+
 
 <!-- jQuery -->
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.2/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <!-- DataTables JS -->
 <script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
 <!-- Bootstrap JS -->
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script>
-    $(document).ready(function() {
-        $('#angkatanTable').DataTable({
-            "pagingType": "simple_numbers",
-            "lengthMenu": [10, 25, 50, 100],
-            "language": {
-                "search": "Search:",
-                "lengthMenu": "Show _MENU_ entries",
-                "info": "Showing _START_ to _END_ of _TOTAL_ entries",
-                "paginate": {
-                    "previous": "Previous",
-                    "next": "Next"
+  $(document).ready(function() {
+    $('#dispensasiTable').DataTable({
+        "pagingType": "simple_numbers", // Menampilkan tombol navigasi halaman
+        "lengthMenu": [10, 25, 50, 100], // Menampilkan pilihan jumlah entri
+        "language": {
+            "search": "Search:", // Menampilkan label untuk pencarian
+            "lengthMenu": "Show _MENU_ entries", // Menampilkan label untuk memilih jumlah entri
+            "info": "Showing _START_ to _END_ of _TOTAL_ entries", // Menampilkan informasi tentang total entri
+            "paginate": {
+                "previous": "Previous", // Menampilkan label tombol 'Previous'
+                "next": "Next" // Menampilkan label tombol 'Next'
+            }
+        }
+    });
+});
+
+     // Event untuk tombol "Ubah Status"
+     $('.ubah-status').click(function() {
+        var pengajuanId = $(this).data('id');
+        var $button = $(this);
+
+        $.ajax({
+            url: 'ubahStatusKajur.php',
+            type: 'POST',
+            data: { id: pengajuanId },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    // Perbarui tampilan status di tabel
+                    var newStatus = response.new_status === 'ditolak' ? 'badge-danger' : 'badge-success';
+                    $button.closest('tr').find('span.badge')
+                        .removeClass('badge-danger badge-success')
+                        .addClass(newStatus)
+                        .text(response.new_status.charAt(0).toUpperCase() + response.new_status.slice(1));
+                } else {
+                    alert(response.error);
                 }
+            },
+            error: function() {
+                alert('Gagal mengubah status.');
             }
         });
     });
-
+    
+    
     document.getElementById("sidebarToggle").addEventListener("click", function() {
-        document.getElementById("sidebar").classList.toggle("collapsed");
-        document.getElementById("content").classList.toggle("expanded");
+        const sidebar = document.getElementById("sidebar");
+
+        if (window.innerWidth <= 768) {
+            // Mode mobile: toggle dari atas
+            sidebar.classList.toggle("visible");
+        } else {
+            // Mode desktop: toggle dari kiri
+            sidebar.classList.toggle("visible");
+        }
     });
+    
 </script>
 
 </body>

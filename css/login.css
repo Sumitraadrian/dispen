@@ -32,4 +32,11 @@ body {
 .custom-img-shift {
     margin-left: -50px; /* Atur nilai sesuai kebutuhan */
 }
-
+@media (max-width: 768px) {
+    .sudisma-title {
+        font-size: 2rem; /* Smaller font for mobile devices */
+    }
+    .sudisma-subtitle {
+        font-size: 1.1rem; /* Adjust subtitle if needed */
+    }
+}

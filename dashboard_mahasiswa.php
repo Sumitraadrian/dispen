@@ -6,6 +6,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'mahasiswa') {
     header('Location: index.php');
     exit();
 }
+// Ambil nama mahasiswa dari database
+$user_id = $_SESSION['user_id'];
+$stmt = $conn->prepare("SELECT nama FROM users WHERE id = ?");
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$stmt->bind_result($nama_mahasiswa);
+$stmt->fetch();
+$stmt->close();
 ?>
 
 <!DOCTYPE html>
@@ -16,10 +24,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'mahasiswa') {
     <title>Dashboard Mahasiswa - SUDISMA</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
     <style>
         .custom-bg {
-            background-color: #5393F3;
+            background-color: #f8f9fa;
         }
         .sidebar {
             background-color: #f8f9fa;
@@ -70,38 +77,22 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'mahasiswa') {
             font-size: 1.2em;
         }
         .main-content {
-            margin-left: 80px;
             padding: 20px;
-            margin-top: 80px; /* Adjusted for header */
+            margin-top: 80px;
             min-height: calc(100vh - 56px);
         }
         .card {
             border-radius: 15px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-            display: flex;
-            flex-direction: column;
         }
         .card:hover {
             transform: translateY(-10px);
             box-shadow: 0 12px 20px rgba(0, 0, 0, 0.1);
         }
-        .card-body {
-            padding: 2rem;
-            flex: 1;
-        }
-        .card-title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #007bff;
-        }
-        .card-text {
-            color: #555;
-            font-size: 1.1rem;
-        }
         .btn {
-            font-size: 1.1rem;
-            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            padding: 0.5rem 1.25rem;
             border-radius: 30px;
             transition: background-color 0.3s ease;
         }
@@ -119,24 +110,47 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'mahasiswa') {
         .btn-info:hover {
             background-color: #138496;
         }
+
+        /* Responsiveness */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                transform: translateX(-100%);
+            }
+            .sidebar.collapsed {
+                transform: translateX(0);
+            }
+            .content-wrapper {
+                margin-left: 0;
+            }
+            .main-content {
+                padding: 15px;
+                margin-top: 70px;
+            }
+            .card-body {
+                padding: 1rem;
+            }
+            .btn {
+                font-size: 0.9rem;
+                padding: 0.4rem 1rem;
+            }
+        }
     </style>
 </head>
 <body>
-   <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container-fluid">
             <button class="btn me-3" id="sidebarToggle" style="background-color: transparent; border: none;">
                 <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
             </button>
             <a class="navbar-brand text-dark" href="#">SUDISMA</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav"></div>
         </div>
     </nav>
 
-    <!-- Sidebar -->
     <div class="sidebar bg-light p-3 shadow-lg" id="sidebar">
         <h4 class="text-center">SUDISMA</h4>
         <div style="height: 40px;"></div>
@@ -154,21 +168,15 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'mahasiswa') {
         </nav>
     </div>
 
-    <!-- Spacer to push down content -->
-    <div class="spacer"></div>
-
-    <!-- Dashboard Content -->
-    <div class="main-content" id="content">
+    <div class="main-content content-wrapper custom-bg" id="content">
         <div class="container mt-5">
             <div class="row">
                 <div class="col-12 mb-4 text-center">
-                    <h2 class="display-4">Selamat Datang, Mahasiswa!</h2>
-                    <p class="lead">Selamat datang di dashboard pengajuan surat dispensasi.</p>
+                    <h2 class="display-4">Selamat Datang, <?php echo htmlspecialchars($nama_mahasiswa); ?>!</h2>
+                    <p class="lead">Selamat datang di dashboard pengajuan surat dispensasi Fakultas Sains dan Teknologi UIN Sunan Gunung Djati Bandung.</p>
                 </div>
             </div>
 
-            <!-- Dashboard Cards -->
-            <!-- Dashboard Cards -->
             <div class="row">
                 <div class="col-md-6 mb-4">
                     <div class="card shadow-sm" style="height: 100%;">
@@ -189,15 +197,43 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'mahasiswa') {
                     </div>
                 </div>
             </div>
-
         </div>
     </div>
-    <!-- Footer -->
-    <footer class="bg-light text-center py-3 mt-5">
-        <p class="mb-0">© 2024 SUDISMA - Surat Dispensasi Mahasiswa. All Rights Reserved.</p>
-    </footer>
 
-    <!-- Scripts -->
+    <footer class="bg-dark text-light py-4">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4">
+                <h5>SUDISMA</h5>
+                <p>Platform pengajuan surat dispensasi mahasiswa Fakultas Sains dan Teknologi UIN Sunan Gunung Djati Bandung.</p>
+            </div>
+            <div class="col-md-4">
+                <h5>Kontak Kami</h5>
+                <ul class="list-unstyled">
+                <li><i class="bi bi-geo-alt-fill"></i> Jl. A.H. Nasution No.105, Cipadung Wetan, Kec. Cibiru, Kota Bandung, Jawa Barat 40614</li>
+                <li><i class="bi bi-envelope-fill"></i> <a href="mailto:fst@uinsgd.ac.id" class="text-light">fst@uinsgd.ac.id</a></li>
+                </ul>
+            </div>
+            <div class="col-md-4 md-3">
+                <h5 class="text-light">Quick Links</h5>
+                <ul class="list-unstyled">
+                    <li><a href="dashboard_mahasiswa.php" class="text-light">Dashboard</a></li>
+                    <li><a href="form_pengajuan.php" class="text-light">Ajukan Dispensasi</a></li>
+                    <li><a href="status_pengajuan.php" class="text-light">Cek Status</a></li>
+                    
+                </ul>
+            </div>
+
+        </div>
+        <hr class="my-3">
+        <div class="text-center">
+            <p class="mb-0">© 2024 SUDISMA - Surat Dispensasi Mahasiswa. All Rights Reserved.</p>
+            <p class="mb-0"><small>Developed by Team SUDISMA</small></p>
+        </div>
+    </div>
+</footer>
+
+
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
     <script>
